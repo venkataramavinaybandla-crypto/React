@@ -125,7 +125,11 @@ export default function App() {
   const [prefs, setPrefs] = useState(() => {
     try {
       const saved = localStorage.getItem('vantage_settings')
-      return saved ? { ...defaultPrefs, ...JSON.parse(saved) } : defaultPrefs
+      const parsed = saved ? { ...defaultPrefs, ...JSON.parse(saved) } : defaultPrefs;
+      // Always reset live API to off when the app is restarted to prevent accidental credit drain
+      parsed.liveApiEnabled = false;
+      localStorage.setItem('vantage_settings', JSON.stringify(parsed));
+      return parsed;
     } catch { return defaultPrefs }
   })
 
