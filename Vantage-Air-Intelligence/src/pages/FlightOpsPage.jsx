@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Plus, ArrowUpDown, Plane, X, Save, RefreshCw } from 'lucide-react'
+import { fetchLiveFlights } from '../services/aviationApi'
 
 const ease = [0.16, 1, 0.3, 1]
 
-const initialFlights = [
+const fallbackFlights = [
   { id:'VT-101',  origin:'DXB', dest:'LHR', gate:'A3', std:'06:15', sta:'14:30', status:'boarding',     delay:0,  ac:'B777', pax:342, cargo:'12.4t', captain:'Capt. Rahman'   },
   { id:'VT-204',  origin:'JFK', dest:'CDG', gate:'B1', std:'06:45', sta:'19:10', status:'on-time',      delay:0,  ac:'A380', pax:517, cargo:'8.1t',  captain:'Capt. Singh'     },
   { id:'VT-318',  origin:'SIN', dest:'NRT', gate:'C2', std:'07:10', sta:'14:55', status:'delayed',      delay:25, ac:'B787', pax:291, cargo:'5.2t',  captain:'Capt. Nakamura'  },
@@ -218,11 +219,55 @@ function ReassignModal({ flight, takenGates, onClose, onSave }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function FlightOpsPage() {
-  const [flights,  setFlights]  = useState(initialFlights)
+  const [flights,  setFlights]  = useState(fallbackFlights)
   const [tab,      setTab]      = useState('All')
   const [search,   setSearch]   = useState('')
   const [selected, setSelected] = useState(null)
   const [modal,    setModal]    = useState(null)  // null | 'add' | 'edit' | 'reassign'
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true;
+    const loadFlights = async () => {
+      setIsLoading(true);
+      const data = await fetchLiveFlights(30);
+      if (!mounted) return;
+      if (data && data.length > 0) {
+        const mapped = data.map((apiFlight, idx) => {
+          const date = apiFlight.departure?.scheduled ? new Date(apiFlight.departure.scheduled) : new Date();
+          const stdStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          const arrDate = apiFlight.arrival?.scheduled ? new Date(apiFlight.arrival.scheduled) : new Date(date.getTime() + 1000 * 60 * 60 * 2);
+          const staStr = arrDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          
+          const delay = apiFlight.departure?.delay || 0;
+          let statusStr = 'on-time';
+          if (delay > 0) statusStr = 'delayed';
+          else if (['cancelled', 'incident', 'diverted'].includes(apiFlight.flight_status)) statusStr = 'conflict';
+          else if (idx % 6 === 0) statusStr = 'boarding';
+          else if (idx % 11 === 0) statusStr = 'maintenance';
+          
+          return {
+            id: apiFlight.flight?.iata || apiFlight.flight?.number || `VT-${Math.floor(Math.random() * 9000 + 1000)}`,
+            origin: apiFlight.departure?.iata || 'UNK',
+            dest: apiFlight.arrival?.iata || 'UNK',
+            gate: apiFlight.departure?.gate || ALL_GATES[idx % ALL_GATES.length],
+            std: stdStr,
+            sta: staStr,
+            status: statusStr,
+            delay: delay,
+            ac: apiFlight.aircraft?.iata || 'B777',
+            pax: Math.floor(Math.random() * 300 + 50),
+            cargo: (Math.random() * 10 + 2).toFixed(1) + 't',
+            captain: 'Capt. ' + ['Rahman', 'Singh', 'Nakamura', 'Williams', 'Rodriguez', 'Chen'][idx % 6]
+          };
+        });
+        setFlights(mapped);
+      }
+      setIsLoading(false);
+    };
+    loadFlights();
+    return () => { mounted = false; };
+  }, []);
 
   const filtered = flights.filter(f => {
     const matchTab    = tab === 'All' || f.status === statusMap[tab]
@@ -267,7 +312,7 @@ export default function FlightOpsPage() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-5 gap-4">
-        <StatCard label="Total Flights"  value={flights.length}                                                    sub="Today's schedule"      />
+        <StatCard label="Total Flights"  value={isLoading ? '...' : flights.length}                                                    sub="Today's schedule"      />
         <StatCard label="Boarding"       value={flights.filter(f=>f.status==='boarding').length}    sub="At gate now"           />
         <StatCard label="Delayed"        value={flights.filter(f=>f.status==='delayed').length}     sub="Needs attention" accent />
         <StatCard label="Conflicts"      value={flights.filter(f=>f.status==='conflict').length}    sub="Requires resolution" accent />

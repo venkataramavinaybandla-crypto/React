@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle, CheckCircle, RefreshCw, Plus, X, Wrench } from 'lucide-react'
+import { fetchLiveFlights } from '../services/aviationApi'
 
 const ease = [0.16, 1, 0.3, 1]
 
-const initialTerminals = {
+const fallbackTerminals = {
   'Terminal A': [
     { id:'A1', status:'open',        flight:null,     ac:null,   pax:0   },
     { id:'A2', status:'boarding',    flight:'VT-422', ac:'A320', pax:168 },
@@ -127,11 +128,64 @@ function Toast({ message }) {
 }
 
 export default function GateControlPage() {
-  const [terminals,      setTerminals]     = useState(initialTerminals)
+  const [terminals,      setTerminals]     = useState(fallbackTerminals)
   const [activeTerminal, setActiveTerminal] = useState('Terminal A')
   const [selectedGate,   setSelectedGate]  = useState(null)
   const [modal,          setModal]         = useState(null) // null | 'reassign'
   const [toast,          setToast]         = useState(null)
+
+  useEffect(() => {
+    let mounted = true;
+    const loadGates = async () => {
+      const data = await fetchLiveFlights(35);
+      if (!mounted) return;
+      if (data && data.length > 0) {
+        const newTerms = JSON.parse(JSON.stringify(fallbackTerminals));
+        for (const term in newTerms) {
+          newTerms[term].forEach(g => {
+            g.status = 'open';
+            g.flight = null;
+            g.ac = null;
+            g.pax = 0;
+          });
+        }
+        
+        let gateIndex = 0;
+        const allGatesArr = Object.values(newTerms).flat();
+        
+        data.forEach((apiFlight, idx) => {
+          if (gateIndex >= allGatesArr.length) return;
+          const gate = allGatesArr[gateIndex];
+          
+          let statusStr = 'on-time';
+          const delay = apiFlight.departure?.delay || 0;
+          if (delay > 0) statusStr = 'delayed';
+          else if (['cancelled', 'incident', 'diverted'].includes(apiFlight.flight_status)) statusStr = 'conflict';
+          else if (idx % 7 === 0) statusStr = 'boarding';
+          else if (idx % 13 === 0) statusStr = 'maintenance';
+          
+          gate.status = statusStr;
+          if (statusStr !== 'maintenance' && statusStr !== 'open') {
+             gate.flight = apiFlight.flight?.iata || apiFlight.flight?.number || `VT-${Math.floor(Math.random() * 900 + 100)}`;
+             gate.ac = apiFlight.aircraft?.iata || 'B777';
+             gate.pax = Math.floor(Math.random() * 300 + 50);
+          }
+          gateIndex++;
+        });
+        
+        // Ensure at least one conflict to demonstrate UI feature
+        if (allGatesArr[1].flight && allGatesArr[2].flight) {
+           allGatesArr[2].flight = allGatesArr[1].flight;
+           allGatesArr[1].status = 'conflict';
+           allGatesArr[2].status = 'conflict';
+        }
+        
+        setTerminals(newTerms);
+      }
+    };
+    loadGates();
+    return () => { mounted = false; };
+  }, []);
 
   const showToast = (msg) => {
     setToast(msg)

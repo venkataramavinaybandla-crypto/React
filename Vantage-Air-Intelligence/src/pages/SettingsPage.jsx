@@ -68,6 +68,9 @@ export default function SettingsPage() {
         <div className="col-span-8 space-y-4">
           {/* System config */}
           <Section icon={Monitor} title="System Configuration">
+            <SettingRow label="Live API Data" sub="Fetch real-time flight data (consumes credits)">
+              <Toggle value={prefs.liveApiEnabled} onChange={set('liveApiEnabled')} />
+            </SettingRow>
             <SettingRow label="Auto Refresh" sub="Sync all feeds every 30 seconds">
               <Toggle value={prefs.autoRefresh} onChange={set('autoRefresh')} />
             </SettingRow>

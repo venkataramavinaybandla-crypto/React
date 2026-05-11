@@ -19,6 +19,7 @@ const defaultPrefs = {
   darkMode:     false,
   compactView:  false,
   autoRefresh:  true,
+  liveApiEnabled: false,
   radarFeed:    true,
   fidsSync:     true,
   greedyAlloc:  true,
